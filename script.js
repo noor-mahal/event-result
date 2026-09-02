@@ -1,222 +1,82 @@
-const EVENT_DATE = new Date(2026,8,5).getTime();
-const PLACE_POINTS = {first:10,second:5,third:3};
-const ADMIN_EMAIL = "ymusthafa313@gmail.com";
-const ADMIN_PASSWORD = "Must#9741"; // Preview only — client-side demo authentication.
+const ADMIN_EMAIL="ymusthafa313@gmail.com";
+const ADMIN_PASSWORD_DEFAULT="Must@9741";
+const EVENT_DATE=new Date(2026,8,5).getTime();
+const PLACE_POINTS={first:10,second:5,third:3};
+const CATEGORIES=["Speaking","Recitation","Vocal","Knowledge","Writing","Percussion","Art","General"];
+const ICONS={Speaking:"🎤",Recitation:"📖",Vocal:"🎶",Knowledge:"🧠",Writing:"✍️",Percussion:"🥁",Art:"🎨",General:"🏅"};
+const NAV=[["home","🏠","Home"],["competitions","🏆","Competitions"],["results","🥇","Results"],["totalresult","🏅","Total Result"],["gallery","🖼️","Gallery"],["admin","🔐","Admin"]];
+const INITIAL_GROUPS=[{id:"g1",name:"Kanz"},{id:"g2",name:"Jawhar"}];
+const INITIAL_STUDENTS=[
+{id:"s1",groupId:"g1",studentId:"K01",name:"Mohammed A"},{id:"s2",groupId:"g1",studentId:"K02",name:"Shafi"},{id:"s3",groupId:"g1",studentId:"K03",name:"Fathima S"},
+{id:"s4",groupId:"g2",studentId:"J01",name:"Afsal K"},{id:"s5",groupId:"g2",studentId:"J02",name:"Ayesha R"},{id:"s6",groupId:"g2",studentId:"J03",name:"Zainab M"}];
+const INITIAL_COMPETITIONS=[
+{id:"1",name:"Speech Competition",category:"Speaking"},{id:"2",name:"Quran Recitation",category:"Recitation"},{id:"3",name:"Nasheed",category:"Vocal"},
+{id:"4",name:"Islamic Quiz",category:"Knowledge"},{id:"5",name:"Essay Writing",category:"Writing"},{id:"6",name:"Duff Competition",category:"Percussion"}];
+const INITIAL_RESULTS={
+"1":{first:{groupId:"g1",studentId:"K01"},second:{groupId:"g2",studentId:"J01"},third:{groupId:"g1",studentId:"K02"},published:true},
+"2":{first:{groupId:"g2",studentId:"J02"},second:{groupId:"g1",studentId:"K03"},third:{groupId:"g2",studentId:"J03"},published:true}};
 
-const CATEGORIES = ["Speaking","Recitation","Vocal","Knowledge","Writing","Percussion","Art","General"];
-const ICONS = {Speaking:"🎤",Recitation:"📖",Vocal:"🎶",Knowledge:"🧠",Writing:"✍️",Percussion:"🥁",Art:"🎨",General:"🏅"};
-const NAV = [["home","🏠 Home"],["competitions","🏆 Competitions"],["results","🥇 Results"],["totalresult","🏅 Total Result"],["gallery","🖼️ Gallery"],["admin","🔐 Admin"]];
-
-const INITIAL_GROUPS = [{id:"g1",name:"Kanz"},{id:"g2",name:"Jawhar"}];
-const INITIAL_STUDENTS = [
-  {id:"s1",groupId:"g1",studentId:"K01",name:"Mohammed A"},
-  {id:"s2",groupId:"g1",studentId:"K02",name:"Shafi"},
-  {id:"s3",groupId:"g1",studentId:"K03",name:"Fathima S"},
-  {id:"s4",groupId:"g2",studentId:"J01",name:"Afsal K"},
-  {id:"s5",groupId:"g2",studentId:"J02",name:"Ayesha R"},
-  {id:"s6",groupId:"g2",studentId:"J03",name:"Zainab M"}
-];
-const INITIAL_COMPETITIONS = [
-  {id:"1",name:"Speech Competition",category:"Speaking"},
-  {id:"2",name:"Quran Recitation",category:"Recitation"},
-  {id:"3",name:"Nasheed",category:"Vocal"},
-  {id:"4",name:"Islamic Quiz",category:"Knowledge"},
-  {id:"5",name:"Essay Writing",category:"Writing"},
-  {id:"6",name:"Duff Competition",category:"Percussion"}
-];
-const INITIAL_RESULTS = {
-  "1":{first:{groupId:"g1",studentId:"K01"},second:{groupId:"g2",studentId:"J01"},third:{groupId:"g1",studentId:"K02"},published:true},
-  "2":{first:{groupId:"g2",studentId:"J02"},second:{groupId:"g1",studentId:"K03"},third:{groupId:"g2",studentId:"J03"},published:true}
-};
-
-let state = {
-  page:"home", selectedId:null, mobile:false, competitions:structuredClone(INITIAL_COMPETITIONS),
-  results:structuredClone(INITIAL_RESULTS), groups:structuredClone(INITIAL_GROUPS),
-  students:structuredClone(INITIAL_STUDENTS), totalVisible:false, gallery:[],
-  signedIn:false, query:"", filter:"all", adminTab:"dashboard", justPublished:null
-};
-
-const app = document.getElementById("app");
-const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,6);
-const studentById = id => state.students.find(s=>s.studentId===id);
-const groupName = id => state.groups.find(g=>g.id===id)?.name || "—";
-const announcedCount = () => Object.values(state.results).filter(r=>r.published).length;
-
-function totals(){
-  const t = state.groups.map(g=>({...g,total:0}));
-  Object.values(state.results).forEach(r=>{
-    if(!r.published)return;
-    ["first","second","third"].forEach(p=>{
-      const id=r[p]?.groupId, x=t.find(g=>g.id===id); if(x)x.total+=PLACE_POINTS[p];
-    });
-  });
-  return t;
-}
-function esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
-function countdown(){
-  const d=Math.max(0,EVENT_DATE-Date.now());
-  return {days:Math.floor(d/86400000),hours:Math.floor(d/3600000)%24,minutes:Math.floor(d/60000)%60,seconds:Math.floor(d/1000)%60};
-}
-function live(dark=false){return `<span class="live ${dark?"dark":""}"><i class="dot"></i>Live</span>`}
-function button(label,cls="btn btn-green",action=""){return `<button class="${cls}" data-action="${action}">${label}</button>`}
-
-function layout(content){
-  app.innerHTML=`
-  <div class="preview-banner">UI PREVIEW — mock data only. Publishing a result updates this browser's local state; it is not connected to Supabase.</div>
-  <header class="navbar">
-    <nav class="container nav-inner">
-      <button class="brand" data-page="home"><span>🕌</span><span class="font-display">Sirajul Huda</span></button>
-      <div class="nav-links">${NAV.map(([k,l])=>`<button class="nav-btn ${state.page===k?"active":""}" data-page="${k}">${l}</button>`).join("")}</div>
-      <button class="menu-btn" id="menuBtn">☰</button>
-    </nav>
-    <div class="mobile-nav ${state.mobile?"open":""}">${NAV.map(([k,l])=>`<button class="${state.page===k?"active":""}" data-page="${k}">${l}</button>`).join("")}</div>
-  </header>
-  <main>${content}</main>
-  <footer><div class="container footer-row"><div><strong>🕌 Sirajul Huda Arabic Madrasa</strong><div>Miladh The First 2K26 · Unnalu, Koyyur · Results update live — no refresh needed.</div></div><small>© 2026 Sirajul Huda Arabic Madrasa, Unnalu, Koyyur.</small></div></footer>`;
-  bindGlobal();
-}
-
-function home(){
-  const c=countdown(), n=announcedCount();
-  return `<section class="hero"><div class="hero-content">
-    <div class="hero-mosque">🕌</div><p class="eyebrow">Sirajul Huda Arabic Madrasa, Unnalu, Koyyur</p>
-    <h1 class="font-display">Miladh The First 2K26</h1>
-    <p class="hero-desc">A celebration of faith, talent and community — featuring speech, recitation, nasheed and knowledge competitions for all ages.</p>
-    <div class="meta"><span>📅 September 5, 2026</span><span>📍 Unnalu, Koyyur Post, Belthangady</span></div>
-    <div class="countdown">${[["Days",c.days],["Hours",c.hours],["Min",c.minutes],["Sec",c.seconds]].map(x=>`<div class="count-box"><strong>${String(x[1]).padStart(2,"0")}</strong><small>${x[0]}</small></div>`).join("")}</div>
-    <div class="hero-actions">${button("🏆 View Competitions","btn btn-gold","page:competitions")}${button("🥇 View Results","btn btn-outline","page:results")}</div>
-    <div style="margin-top:30px">${live(true)}</div>
-  </div></section>
-  <div class="container stats"><div class="stat"><strong>${state.competitions.length}</strong><span>Competitions</span></div><div class="stat"><strong>${n}</strong><span>Announced</span></div><div class="stat"><strong>${state.competitions.length-n}</strong><span>Pending</span></div></div>
-  <section class="home-note"><h2>Results update the moment they're announced.</h2><p>No refreshing needed — this preview updates immediately when an admin publishes a result.</p></section>`;
-}
-
-function competitions(){
-  let list=state.competitions.filter(c=>{
-    const q=c.name.toLowerCase().includes(state.query.toLowerCase()), r=state.results[c.id];
-    return q && (state.filter==="all"||(state.filter==="announced"&&r?.published)||(state.filter==="pending"&&!r?.published));
-  });
-  return `<div class="container page"><div class="page-head"><div><h1>Competitions</h1><div class="subtitle">${state.competitions.length} competitions this year</div></div>${live()}</div>
-  <div class="search-row"><input class="input search-input" id="compSearch" placeholder="Search competitions..." value="${esc(state.query)}"><div class="filters">${["all","announced","pending"].map(f=>`<button class="filter-btn ${state.filter===f?"active":""}" data-filter="${f}">${f==="all"?"All":f==="announced"?"🟢 Announced":"🟡 Pending"}</button>`).join("")}</div></div>
-  <div class="grid">${list.map(c=>{const a=state.results[c.id]?.published;return `<button class="card comp-card" data-result="${c.id}"><div class="comp-top"><span class="icon-box">${ICONS[c.category]||"🏅"}</span><span class="status ${a?"announced":"pending"}">${a?"🟢 Announced":"🟡 Pending"}</span></div><h3>${esc(c.name)}</h3><p>Category: ${esc(c.category)}</p><div class="card-footer">View Result →</div></button>`}).join("")}</div></div>`;
-}
-
-function resultPage(){
-  const c=state.competitions.find(x=>x.id===state.selectedId), r=state.results[state.selectedId];
-  if(!c)return competitions();
-  if(!r?.published)return `<div class="container page"><button class="back" data-page="competitions">← Back to Competitions</button><div class="result-head"><div><h1>${esc(c.name)}</h1><div class="subtitle">Category: ${esc(c.category)}</div></div>${live()}</div><div class="empty result-box"><div style="font-size:34px">⏳</div><h3>Result Not Announced</h3><p>Results will be announced soon.</p></div></div>`;
-  const places=[["first","🥇","1st Place"],["second","🥈","2nd Place"],["third","🥉","3rd Place"]];
-  return `<div class="container page"><button class="back" data-page="competitions">← Back to Competitions</button><div class="result-head"><div><h1>${esc(c.name)}</h1><div class="subtitle">Category: ${esc(c.category)}</div></div>${live()}</div><div class="result-box"><h2 class="font-display" style="color:#166534">🏆 Result Announced</h2><div class="podium">${places.map(([p,m,l])=>{const e=r[p],s=studentById(e?.studentId);return `<div class="place-card"><div class="medal">${m}</div><span class="place-label">${l}</span><div class="place-name">${esc(s?.name||"—")}</div><div class="place-id">ID: ${esc(e?.studentId||"—")}</div></div>`}).join("")}</div>${posterGenerator(c,r)}</div></div>`;
-}
-
-function results(){
- return `<div class="container page"><div class="page-head"><div><h1>All Results</h1><div class="subtitle">Every competition, updated live.</div></div>${live()}</div><div class="grid" style="grid-template-columns:repeat(2,1fr)">${state.competitions.map(c=>{const r=state.results[c.id];return `<button class="card comp-card" data-result="${c.id}"><h3>${esc(c.name)}</h3>${r?.published?`<ul style="list-style:none;padding:0;margin:12px 0;line-height:1.8;font-size:13px"><li>🥇 ID: ${esc(r.first?.studentId||"—")}</li><li>🥈 ID: ${esc(r.second?.studentId||"—")}</li><li>🥉 ID: ${esc(r.third?.studentId||"—")}</li></ul>`:`<p>⏳ Result Pending</p>`}</button>`}).join("")}</div></div>`;
-}
-
-function totalResult(){
- if(!state.totalVisible)return `<div class="container page"><div class="page-head"><div><h1>🏅 Total Result</h1><div class="subtitle">Overall standings across every announced competition.</div></div>${live()}</div><div class="empty" style="margin-top:35px"><div style="font-size:32px">🔒</div><h3>Total Result Not Published Yet</h3><p>The organizer hasn't made the overall standings public yet. Please check back soon.</p></div></div>`;
- const top=[...totals()].sort((a,b)=>b.total-a.total).slice(0,3), medals=["🥇","🥈","🥉"], labels=["1st Place","2nd Place","3rd Place"];
- return `<div class="container page"><div class="page-head"><div><h1>🏅 Total Result</h1><div class="subtitle">Overall standings across every announced competition.</div></div>${live()}</div><div class="total-grid">${top.map((g,i)=>`<div class="place-card"><div class="medal">${medals[i]}</div><span class="place-label">${labels[i]}</span><div class="place-name">${esc(g.name)}</div><div class="marks">${g.total} Marks</div></div>`).join("")}</div><p style="text-align:center;color:var(--muted);font-size:11px;margin-top:18px">Scoring: 1st = 10 marks · 2nd = 5 marks · 3rd = 3 marks.</p>${lookup()}</div>`;
-}
-
-function lookup(){
- return `<div class="card lookup"><h2 class="font-display" style="color:#065f46">🔎 Participant Lookup</h2><div class="subtitle">Enter a student ID to see which competitions they placed in.</div><form id="lookupForm"><input class="input" id="lookupId" placeholder="Student ID (e.g. K01)"><button class="btn btn-green">Search</button></form><div id="lookupResult"></div></div>`;
-}
-
-function gallery(){
- return `<div class="container page"><div class="page-head"><div><h1>🖼️ Poster Gallery</h1><div class="subtitle">Posters generated from result pages, saved here for easy access.</div></div>${live()}</div>${state.gallery.length?`<div class="gallery-grid">${state.gallery.map(p=>`<div class="card gallery-item"><img src="${p.dataUrl}" alt="${esc(p.competitionName)}"><div class="gallery-body"><b>${esc(p.competitionName)}</b><div class="muted">${p.style==="full"?"Full Details":"Top 3"} · ${new Date(p.createdAt).toLocaleDateString()}</div><div class="gallery-actions"><a class="small-btn green" href="${p.dataUrl}" download="${esc(p.competitionName).replace(/\\s+/g,"-")}-poster.png">Download</a><button class="small-btn red" data-delete-poster="${p.id}">Remove</button></div></div></div>`).join("")}</div>`:`<div class="empty" style="margin-top:35px"><div style="font-size:32px">🖼️</div><h3>No Posters Saved Yet</h3><p>Open any announced result and tap “Generate Poster” to create and save one here.</p></div>`}</div>`;
-}
-
-function admin(){
- if(!state.signedIn)return `<div class="container admin-login"><div style="text-align:center;font-size:38px">🔐</div><h1 style="text-align:center">Admin Sign In</h1><div class="subtitle" style="text-align:center">Manage competitions and publish results.</div><form class="card admin-form" id="loginForm"><div class="field"><label>Email</label><input class="input" id="email" placeholder="Admin email"></div><div class="field"><label>Password</label><input class="input" type="password" id="password" placeholder="Password"></div><div id="loginError"></div><button class="btn btn-green" style="width:100%">Sign In →</button><p class="muted" style="text-align:center;margin-top:12px">Preview authentication only. A production site should use a server/auth provider.</p></form></div>`;
- return `<div class="container page"><div class="admin-tabs"><div class="tabs">${[["dashboard","📊 Dashboard"],["competitions","🏆 Competitions"],["students","🧑‍🎓 Students"],["results","🥇 Results"]].map(([k,l])=>`<button class="tab ${state.adminTab===k?"active":""}" data-admin-tab="${k}">${l}</button>`).join("")}</div><button class="small-btn" id="signOut">Sign Out</button></div>${adminContent()}</div>`;
-}
-function adminContent(){
- if(state.adminTab==="dashboard")return dashboard();
- if(state.adminTab==="competitions")return competitionManager();
- if(state.adminTab==="students")return studentManager();
- return resultManager();
-}
-function dashboard(){
- const ts=[...totals()].sort((a,b)=>b.total-a.total);
- return `<div class="mini-grid">${[["Competitions",state.competitions.length],["Students",state.students.length],["Announced",announcedCount()],["Pending",state.competitions.length-announcedCount()]].map(x=>`<div class="card mini-stat"><strong>${x[1]}</strong><span>${x[0]}</span></div>`).join("")}</div><div class="admin-columns"><div class="card"><div class="muted">Total Marks (Kanz vs Jawhar)</div><ul class="list">${ts.map((g,i)=>`<li><span> ${i===0?"🥇":"🥈"} <strong>${esc(g.name)}</strong></span><b>${g.total}</b></li>`).join("")}</ul></div><div class="card"><div class="muted">Total Result Page</div><p class="subtitle">Controls whether the public Total Result page shows overall standings.</p><div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><b>${state.totalVisible?"🟢 Visible to public":"🔒 Hidden from public"}</b><button class="btn ${state.totalVisible?"btn-outline":"btn-green"}" id="toggleTotal">${state.totalVisible?"Hide":"Show to Public"}</button></div></div></div>`;
-}
-function competitionManager(){
- return `<div class="admin-columns"><form class="card" id="addCompForm"><h2 class="font-display" style="color:#065f46">Add Competition</h2><div class="field"><label>Name</label><input class="input" id="newCompName" placeholder="e.g. Calligraphy Contest" required></div><div class="field"><label>Category</label><select class="select" id="newCompCat">${CATEGORIES.map(c=>`<option>${c}</option>`).join("")}</select></div><button class="btn btn-green">Add Competition</button></form><div><h2 class="font-display" style="color:#065f46">All Competitions</h2><ul class="list">${state.competitions.map(c=>`<li><span class="list-main"><strong>${ICONS[c.category]||"🏅"} ${esc(c.name)}</strong><br><span class="muted">${esc(c.category)} · ${state.results[c.id]?.published?"🟢 Announced":"🟡 Pending"}</span></span><button class="small-btn red" data-delete-comp="${c.id}">Delete</button></li>`).join("")}</ul></div></div>`;
-}
-function studentManager(){
- return `<div class="admin-columns">${state.groups.map(g=>`<div class="card"><h2 class="font-display" style="color:#065f46">${esc(g.name)}</h2><div class="muted">Students in this group</div><ul class="list">${state.students.filter(s=>s.groupId===g.id).map(s=>`<li><span class="list-main"><strong>${esc(s.name)}</strong><br><span class="muted">ID: ${esc(s.studentId)}</span></span><button class="small-btn red" data-delete-student="${s.id}">Delete</button></li>`).join("")}</ul><form class="add-student" data-group="${g.id}"><input class="input" name="studentId" placeholder="Student ID (e.g. K01)" required><input class="input" name="name" placeholder="Student name" required style="margin-top:7px"><button class="btn btn-green" style="margin-top:8px">Add Student</button></form></div>`).join("")}</div>`;
-}
-function resultManager(){
- return `<div class="result-manager"><label class="muted">Select Competition</label><select class="select" id="adminCompSelect"><option value="">Choose a competition...</option>${state.competitions.map(c=>`<option value="${c.id}">${esc(c.name)} ${state.results[c.id]?.published?"🟢":"🟡"}</option>`).join("")}</select><div id="editor"></div></div>`;
-}
-function renderEditor(id){
- if(!id){document.getElementById("editor").innerHTML="";return}
- const r=state.results[id]||{}, groups=state.groups;
- let f={first:r.first||{groupId:groups[0].id,studentId:""},second:r.second||{groupId:groups[0].id,studentId:""},third:r.third||{groupId:groups[0].id,studentId:""}};
- document.getElementById("editor").innerHTML=`<div class="card" style="margin-top:18px"><div class="subtitle">Status: ${r.published?"🟢 Announced":"🟡 Not Announced"}</div>${[["first","🥇 1st Place (10 marks)"],["second","🥈 2nd Place (5 marks)"],["third","🥉 3rd Place (3 marks)"]].map(([p,l])=>`<div class="place-editor"><label>${l}</label><select class="select group-select" data-place="${p}">${groups.map(g=>`<option value="${g.id}" ${f[p].groupId===g.id?"selected":""}>${esc(g.name)}</option>`).join("")}</select><select class="select student-select" data-place="${p}">${studentsOptions(f[p].groupId,f[p].studentId)}</select></div>`).join("")}<div style="display:flex;gap:8px;margin-top:16px"><button class="btn btn-gold" id="publishBtn">${r.published?"Update Result":"Publish Result"}</button>${r.published?`<button class="btn btn-outline" id="revokeBtn">Revoke Announcement</button>`:""}</div><p class="muted" style="margin-top:12px">Publishing updates this preview instantly and adds marks to the group's Total Result.</p></div>`;
- document.querySelectorAll(".group-select").forEach(s=>s.onchange=()=>{const p=s.dataset.place; const student=document.querySelector(`.student-select[data-place="${p}"]`);student.innerHTML=studentsOptions(s.value,"");});
- document.getElementById("publishBtn").onclick=()=>{
-   const data={};["first","second","third"].forEach(p=>{const g=document.querySelector(`.group-select[data-place="${p}"]`).value,s=document.querySelector(`.student-select[data-place="${p}"]`).value;data[p]={groupId:g,studentId:s};});
-   state.results[id]={...data,published:true}; state.justPublished=id; state.selectedId=id; save(); render(); setTimeout(()=>{state.justPublished=null},2500);
- };
- if(document.getElementById("revokeBtn"))document.getElementById("revokeBtn").onclick=()=>{state.results[id]={...state.results[id],published:false};save();render()};
-}
-function studentsOptions(groupId,selected){
- return `<option value="">— Select student —</option>${state.students.filter(s=>s.groupId===groupId).map(s=>`<option value="${esc(s.studentId)}" ${selected===s.studentId?"selected":""}>${esc(s.name)} (ID: ${esc(s.studentId)})</option>`).join("")}`;
-}
-
-function posterGenerator(c,r){
- return `<div class="poster-wrap card"><div class="poster-controls"><h3 style="margin:0">Poster Generator</h3><div><button class="small-btn" id="top3Poster">Top 3</button><button class="small-btn" id="fullPoster">Full Details</button></div></div><canvas id="posterCanvas" class="poster-canvas" width="800" height="1000"></canvas><div style="text-align:center"><button class="btn btn-gold" id="savePoster">💾 Save to Gallery</button></div></div>`;
-}
-function drawPoster(style="top3"){
- const c=state.competitions.find(x=>x.id===state.selectedId),r=state.results[state.selectedId],canvas=document.getElementById("posterCanvas");if(!canvas||!c||!r)return;
- const ctx=canvas.getContext("2d"),W=canvas.width,H=canvas.height,g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,"#0d3d33");g.addColorStop(1,"#146356");ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
- ctx.strokeStyle="rgba(255,255,255,.25)";ctx.lineWidth=4;ctx.strokeRect(20,20,W-40,H-40);ctx.textAlign="center";ctx.fillStyle="#FBE9A6";ctx.font="600 22px sans-serif";ctx.fillText("SIRAJUL HUDA ARABIC MADRASA",W/2,90);ctx.font="400 16px sans-serif";ctx.fillStyle="rgba(255,255,255,.7)";ctx.fillText("Miladh The First 2K26 · Unnalu, Koyyur",W/2,120);
- ctx.fillStyle="#fff";ctx.font="700 40px serif";wrapText(ctx,c.name,W/2,190,W-120,46);
- [["first","🥇","1ST PLACE",340],["second","🥈","2ND PLACE",530],["third","🥉","3RD PLACE",720]].forEach(([p,m,l,y])=>{const e=r[p],s=studentById(e?.studentId);ctx.font="48px serif";ctx.fillText(m,W/2,y);ctx.font="600 16px sans-serif";ctx.fillStyle="#FBE9A6";ctx.fillText(l,W/2,y+34);ctx.font="700 30px sans-serif";ctx.fillStyle="#fff";ctx.fillText(s?.name||"—",W/2,y+74);ctx.font="400 18px sans-serif";ctx.fillStyle="rgba(255,255,255,.75)";ctx.fillText(`ID: ${e?.studentId||"—"}`,W/2,y+102);});
- if(style==="full"){ctx.font="400 15px sans-serif";ctx.fillStyle="rgba(255,255,255,.6)";ctx.fillText(`Category: ${c.category}`,W/2,H-115);ctx.fillText("September 5, 2026",W/2,H-90);ctx.fillText("Unnalu, Koyyur Post, Belthangady",W/2,H-65);}
- ctx.font="italic 13px sans-serif";ctx.fillStyle="rgba(255,255,255,.4)";ctx.fillText("Generated live from the results page",W/2,H-30);
-}
-function wrapText(ctx,text,x,y,maxWidth,lineHeight){const words=text.split(" "),lines=[];let line="";words.forEach(w=>{const t=line?line+" "+w:w;if(ctx.measureText(t).width>maxWidth&&line){lines.push(line);line=w}else line=t});if(line)lines.push(line);lines.forEach((l,i)=>ctx.fillText(l,x,y+i*lineHeight));}
-
-function render(){
- let content=state.page==="home"?home():state.page==="competitions"?competitions():state.page==="result"?resultPage():state.page==="results"?results():state.page==="totalresult"?totalResult():state.page==="gallery"?gallery():admin();
- layout(content);
- if(state.page==="result"){drawPoster(); document.getElementById("top3Poster")?.addEventListener("click",()=>drawPoster("top3"));document.getElementById("fullPoster")?.addEventListener("click",()=>drawPoster("full"));document.getElementById("savePoster")?.addEventListener("click",savePoster);}
- if(state.page==="totalresult")document.getElementById("lookupForm")?.addEventListener("submit",lookupSubmit);
- if(state.page==="admin"&&state.signedIn&&state.adminTab==="results")document.getElementById("adminCompSelect")?.addEventListener("change",e=>renderEditor(e.target.value));
- if(state.page==="admin"&&state.signedIn)bindAdmin();
-}
-function bindGlobal(){
- document.querySelectorAll("[data-page]").forEach(b=>b.onclick=()=>{state.page=b.dataset.page;state.mobile=false;state.selectedId=null;render()});
- document.getElementById("menuBtn")?.addEventListener("click",()=>{state.mobile=!state.mobile;render()});
- document.querySelectorAll("[data-result]").forEach(b=>b.onclick=()=>{state.selectedId=b.dataset.result;state.page="result";render()});
- document.querySelectorAll("[data-filter]").forEach(b=>b.onclick=()=>{state.filter=b.dataset.filter;render()});
- document.getElementById("compSearch")?.addEventListener("input",e=>{state.query=e.target.value;render();const x=document.getElementById("compSearch");x.focus();x.setSelectionRange(x.value.length,x.value.length)});
- document.querySelectorAll("[data-delete-poster]").forEach(b=>b.onclick=()=>{state.gallery=state.gallery.filter(p=>p.id!==b.dataset.deletePoster);save();render()});
-}
-function bindAdmin(){
- document.querySelectorAll("[data-admin-tab]").forEach(b=>b.onclick=()=>{state.adminTab=b.dataset.adminTab;render()});
- document.getElementById("signOut")?.addEventListener("click",()=>{state.signedIn=false;render()});
- document.getElementById("toggleTotal")?.addEventListener("click",()=>{state.totalVisible=!state.totalVisible;save();render()});
- document.getElementById("addCompForm")?.addEventListener("submit",e=>{e.preventDefault();state.competitions.push({id:uid(),name:document.getElementById("newCompName").value.trim(),category:document.getElementById("newCompCat").value});save();render()});
- document.querySelectorAll("[data-delete-comp]").forEach(b=>b.onclick=()=>{if(confirm("Delete this competition? This also removes its result.")){state.competitions=state.competitions.filter(c=>c.id!==b.dataset.deleteComp);delete state.results[b.dataset.deleteComp];save();render()}});
- document.querySelectorAll("[data-delete-student]").forEach(b=>b.onclick=()=>{if(confirm("Remove this student from the roster?")){state.students=state.students.filter(s=>s.id!==b.dataset.deleteStudent);save();render()}});
- document.querySelectorAll(".add-student").forEach(f=>f.onsubmit=e=>{e.preventDefault();const fd=new FormData(f);state.students.push({id:uid(),groupId:f.dataset.group,studentId:fd.get("studentId").trim(),name:fd.get("name").trim()});save();render()});
- document.getElementById("loginForm")?.addEventListener("submit",e=>{e.preventDefault();if(document.getElementById("email").value.trim().toLowerCase()===ADMIN_EMAIL.toLowerCase()&&document.getElementById("password").value===ADMIN_PASSWORD){state.signedIn=true;state.adminTab="dashboard";render()}else document.getElementById("loginError").innerHTML='<p class="error">Incorrect email or password.</p>'});
-}
-function lookupSubmit(e){
- e.preventDefault();const id=document.getElementById("lookupId").value.trim(),s=studentById(id),box=document.getElementById("lookupResult");
- if(!s){box.innerHTML='<p class="error">No student found with that ID.</p>';return}
- const rows=[];Object.entries(state.results).forEach(([cid,r])=>{if(!r.published)return;["first","second","third"].forEach(p=>{if(r[p]?.studentId?.toLowerCase()===id.toLowerCase()){const c=state.competitions.find(x=>x.id===cid);if(c)rows.push({name:c.name,place:p,medal:p==="first"?"🥇":p==="second"?"🥈":"🥉"})}})});
- box.innerHTML=`<p><b>${esc(s.name)}</b> · ${esc(groupName(s.groupId))} · ID: ${esc(s.studentId)}</p>${rows.length?`<ul>${rows.map(r=>`<li><span>${esc(r.name)}</span><b>${r.medal} ${r.place==="first"?"1st":r.place==="second"?"2nd":"3rd"}</b></li>`).join("")}</ul>`:'<p class="muted">No announced placements yet.</p>'}`;
-}
-function savePoster(){
- const canvas=document.getElementById("posterCanvas"),dataUrl=canvas.toDataURL("image/png"),c=state.competitions.find(x=>x.id===state.selectedId);
- const a=document.createElement("a");a.href=dataUrl;a.download=`${c.name.replace(/\s+/g,"-")}-poster.png`;a.click();
- state.gallery.unshift({id:uid(),dataUrl,competitionName:c.name,style:"top3",createdAt:Date.now()});save();alert("Poster saved to Gallery.");
-}
-function save(){try{localStorage.setItem("sirajulHudaPreview",JSON.stringify({competitions:state.competitions,results:state.results,students:state.students,totalVisible:state.totalVisible,gallery:state.gallery}))}catch(e){}}
-function load(){try{const x=JSON.parse(localStorage.getItem("sirajulHudaPreview")||"null");if(x){state.competitions=x.competitions||state.competitions;state.results=x.results||state.results;state.students=x.students||state.students;state.totalVisible=!!x.totalVisible;state.gallery=x.gallery||[]}}catch(e){}}
-load();render();setInterval(()=>{if(state.page==="home")render()},1000);
+let saved=JSON.parse(localStorage.getItem("sirajulHudaPreview")||"null");
+let state=saved||{page:"home",selectedId:null,mobile:false,competitions:INITIAL_COMPETITIONS,results:INITIAL_RESULTS,students:INITIAL_STUDENTS,totalVisible:false,gallery:[],signed:false,password:ADMIN_PASSWORD_DEFAULT};
+let query="",filter="all",adminTab="dashboard",loginView="signin",loginError="",forgotError="",forgotEmail="",otp="",otpInput="",newPass="",newPass2="",justPublished=null;
+function persist(){localStorage.setItem("sirajulHudaPreview",JSON.stringify(state))}
+function esc(s=""){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
+function groupName(id){return INITIAL_GROUPS.find(g=>g.id===id)?.name||"—"}
+function student(id){return state.students.find(s=>s.studentId===id)}
+function totals(){return INITIAL_GROUPS.map(g=>({ ...g,total:Object.values(state.results).reduce((sum,r)=>sum+(r.published?["first","second","third"].reduce((x,p)=>x+(r[p]?.groupId===g.id?PLACE_POINTS[p]:0),0):0),0)}))}
+function countdown(){let d=Math.max(0,EVENT_DATE-Date.now());return [Math.floor(d/86400000),Math.floor(d/3600000)%24,Math.floor(d/60000)%60,Math.floor(d/1000)%60]}
+function live(){return `<span class="live"><i class="dot"></i>Live</span>`}
+function go(p,id=null){state.page=p;if(id)state.selectedId=id;state.mobile=false;persist();render();scrollTo(0,0)}
+function nav(){return `<header><nav><button class="brand" onclick="go('home')">🕌 <span class="display">Sirajul Huda</span></button><div class="navlinks">${NAV.map(n=>`<button class="${state.page===n[0]?'active':''}" onclick="go('${n[0]}')">${n[1]} ${n[2]}</button>`).join("")}</div><button class="hamb" onclick="state.mobile=!state.mobile;render()"><span></span><span></span><span></span></button></nav><div class="mobilelinks ${state.mobile?'open':''}">${NAV.map(n=>`<button class="${state.page===n[0]?'active':''}" onclick="go('${n[0]}')">${n[1]} ${n[2]}</button>`).join("")}</div></header>`}
+function home(){let c=countdown();return `<section class="hero"><div class="pattern"></div><div class="hero-inner"><div class="mosque">🕌</div><div class="eyebrow">Sirajul Huda Arabic School · Unnalu, Koyyur</div><div class="arabic display">لوها · WAVES OF LOVE</div><h1 class="display">Milad Fest 2K26</h1><p>A celebration of faith, talent and community — featuring speech, recitation, nasheed and knowledge competitions for all ages.</p><div class="meta"><span>📅 Sep-05, Saturday</span><span>📍 Unnalu, Koyyur Post, Belthangady</span></div><div class="countdown">${["Days","Hours","Min","Sec"].map((x,i)=>`<div class="count"><b>${String(c[i]).padStart(2,"0")}</b><small>${x}</small></div>`).join("")}</div><div class="actions"><button class="btn gold" onclick="go('competitions')">🏆 View Competitions</button><button class="btn outline" onclick="go('results')">🥇 View Results</button></div><div style="margin-top:25px">${live()}</div></div></section><div class="stats"><div class="statgrid"><div class="stat"><b>${state.competitions.length}</b><small>Competitions</small></div><div class="stat"><b>${Object.values(state.results).filter(r=>r.published).length}</b><small>Announced</small></div><div class="stat"><b>${state.competitions.length-Object.values(state.results).filter(r=>r.published).length}</b><small>Pending</small></div></div></div><section class="container center"><p class="display" style="font-size:24px;color:#064e3b">Results update the moment they're announced.</p><p class="muted">No refreshing needed — this standalone version saves changes in this browser.</p></section>`}
+function competitions(){let list=state.competitions.filter(c=>c.name.toLowerCase().includes(query.toLowerCase())).filter(c=>filter==="all"||(filter==="announced"?state.results[c.id]?.published:!state.results[c.id]?.published));return `<div class="container"><div class="pagehead"><div><h1 class="display">Competitions</h1></div>${live()}</div><div class="filters"><input class="input search" placeholder="Search competitions..." value="${esc(query)}" oninput="query=this.value;render()">${["all","announced","pending"].map(f=>`<button class="pill ${filter===f?'active':''}" onclick="filter='${f}';render()">${f==="all"?"All":f==="announced"?"🟢 Announced":"🟡 Pending"}</button>`).join("")}</div><div class="grid grid3" style="margin-top:30px">${list.map((c,i)=>{let a=state.results[c.id]?.published;let order=state.competitions.findIndex(x=>x.id===c.id)+1;return `<button class="card compcard" onclick="go('result','${c.id}')"><div class="rowtop"><span class="order">${order}</span><span class="status ${a?'announced':'pending'}">${a?'🟢 Announced':'🟡 Pending'}</span></div><h3 class="display" style="color:#064e3b">${esc(c.name)}</h3><p class="muted">Category: ${esc(c.category)}</p><div class="link">View Result →</div></button>`}).join("")||`<div class="card">No competitions found.</div>`}</div></div>`}
+function resultPage(){let c=state.competitions.find(x=>x.id===state.selectedId),r=state.results[state.selectedId],a=r?.published;if(!c)return competitions();let places=[["🥇","1st Place","first"],["🥈","2nd Place","second"],["🥉","3rd Place","third"]];return `<div class="container narrow"><button class="smallbtn" onclick="go('competitions')">← Back to Competitions</button><div class="pagehead" style="margin-top:15px"><div><h1 class="display">${esc(c.name)}</h1><p class="muted">Category: ${esc(c.category)}</p></div>${live()}</div><div style="margin-top:30px">${a?`<div class="display" style="font-size:20px;color:#047857;margin-bottom:18px">🏆 Result Announced</div><div class="grid grid3">${places.map(p=>{let s=student(r[p[2]]?.studentId);return `<div class="place ${p[2]}">${justPublished===c.id?'<div>✨</div>':''}<span class="medal">${p[0]}</span><span class="label">${p[1]}</span><span class="name">${esc(s?.name||"—")}</span><span>ID: ${esc(r[p[2]]?.studentId||"—")}</span></div>`}).join("")}</div>${posterGenerator(c,r)}`:`<div class="empty"><div style="font-size:32px">⏳</div><p class="display">Result Not Announced</p><p class="muted">Results will be announced soon.</p></div>`}</div></div>`}
+const themes={
+emerald:{label:"Emerald Gold",bg1:"#0b2e22",bg2:"#123f2f",card:"#0f3a2c",stroke:"#D4AF37",pill:"#f4ead2",text:"#12261d",head:"#D4AF37",sub:"#c8c0a4"},
+cream:{label:"Cream Gold",bg1:"#f6efe0",bg2:"#efe4cc",card:"#faf6ec",stroke:"#c9a227",pill:"#fff",text:"#16211c",head:"#123f2f",sub:"#8a7a4a"},
+sky:{label:"Sky Rose",bg1:"#eaf2fb",bg2:"#fdeef4",card:"#fff",stroke:"#c9a227",pill:"#f7f8fb",text:"#16211c",head:"#123f2f",sub:"#8a8fa0"},
+ocean:{label:"Ocean Ivory",bg1:"#0e3b52",bg2:"#e8dfc8",card:"#faf6ec",stroke:"#c9a227",pill:"#fff",text:"#16211c",head:"#123f2f",sub:"#3a5568"}};
+let posterTheme="emerald";
+function posterGenerator(c,r){return `<div class="card" style="margin-top:30px"><div class="pagehead"><h3 class="display">Poster Preview</h3><div class="themebar">${Object.entries(themes).map(([k,t])=>`<button class="pill ${posterTheme===k?'active':''}" onclick="posterTheme='${k}';drawPoster('${c.id}');render()">${t.label}</button>`).join("")}</div></div><div class="poster-wrap"><canvas id="poster" width="800" height="1000"></canvas></div><div class="center" style="margin-top:12px"><button class="btn gold" onclick="savePoster('${c.id}')">💾 Save to Gallery</button></div></div>`}
+function drawPoster(cid){let c=state.competitions.find(x=>x.id===cid),r=state.results[cid],canvas=document.getElementById("poster");if(!canvas)return;let ctx=canvas.getContext("2d"),t=themes[posterTheme],W=800,H=1000;ctx.clearRect(0,0,W,H);let bg=ctx.createLinearGradient(0,0,0,H);bg.addColorStop(0,t.bg1);bg.addColorStop(1,t.bg2);ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);ctx.fillStyle=t.card;ctx.strokeStyle=t.stroke;ctx.lineWidth=3;round(ctx,70,50,660,840,80);ctx.fill();ctx.stroke();ctx.textAlign="center";ctx.fillStyle=t.head;ctx.font="44px serif";ctx.fillText("🕌",400,120);ctx.font="700 20px sans-serif";ctx.fillText("SIRAJUL HUDA ARABIC SCHOOL",400,160);ctx.font="14px sans-serif";ctx.fillStyle=t.sub;ctx.fillText("لوها · WAVES OF LOVE",400,185);ctx.fillStyle=t.card;ctx.strokeStyle=t.stroke;round(ctx,300,210,200,46,23);ctx.fill();ctx.stroke();ctx.fillStyle=t.head;ctx.font="700 24px sans-serif";ctx.fillText("RESULT",400,241);ctx.fillStyle=t.text;ctx.font="700 26px serif";wrap(ctx,c.name,400,330,520,32);[["01","first"],["02","second"],["03","third"]].forEach((p,i)=>{let y=390+i*130,s=student(r[p[1]]?.studentId);ctx.fillStyle=t.card;round(ctx,120,y,64,72,16);ctx.fill();ctx.fillStyle=t.head;ctx.font="700 22px sans-serif";ctx.fillText(p[0],152,y+46);ctx.fillStyle=t.pill;round(ctx,200,y,480,72,36);ctx.fill();ctx.textAlign="left";ctx.fillStyle=t.text;ctx.font="700 22px sans-serif";ctx.fillText(s?.name||"Result pending",226,y+30);ctx.font="14px sans-serif";ctx.fillStyle=t.sub;ctx.fillText("ID: "+(r[p[1]]?.studentId||"—"),226,y+52)});ctx.textAlign="center";ctx.fillStyle=t.head;ctx.font="700 20px serif";ctx.fillText("Milad Fest 2k26",400,850);ctx.font="14px sans-serif";ctx.fillStyle=t.sub;ctx.fillText("Sep-05 · Saturday · Unnalu, Koyyur",400,875)}
+function round(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.quadraticCurveTo(x+w,y,x+w,y+r);ctx.lineTo(x+w,y+h-r);ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);ctx.lineTo(x+r,y+h);ctx.quadraticCurveTo(x,y+h,x,y+h-r);ctx.lineTo(x,y+r);ctx.quadraticCurveTo(x,y,x+r,y);ctx.closePath()}
+function wrap(ctx,text,x,y,max,line){let words=text.split(" "),s="",n=[];words.forEach(w=>{let z=s?s+" "+w:w;if(ctx.measureText(z).width>max&&s){n.push(s);s=w}else s=z});if(s)n.push(s);n.forEach((v,i)=>ctx.fillText(v,x,y+i*line))}
+function savePoster(cid){let c=state.competitions.find(x=>x.id===cid),canvas=document.getElementById("poster");if(!canvas)return;drawPoster(cid);let data=canvas.toDataURL("image/png");let a=document.createElement("a");a.href=data;a.download=`${c.name.replace(/\s+/g,"-")}-${posterTheme}-poster.png`;a.click();state.gallery.unshift({id:Date.now(),dataUrl:data,competitionName:c.name,style:posterTheme,createdAt:Date.now()});persist();alert("Poster saved to Gallery.");render()}
+function resultsPage(){return `<div class="container narrow"><div class="pagehead"><div><h1 class="display">All Results</h1><p class="muted">Every competition, updated live.</p></div>${live()}</div><div class="grid grid2" style="margin-top:30px">${state.competitions.map(c=>{let r=state.results[c.id];return `<button class="card compcard" onclick="go('result','${c.id}')"><h3 class="display" style="color:#064e3b">${esc(c.name)}</h3>${r?.published?`<ul class="muted resultlist"><li>🥇 ID: ${esc(r.first?.studentId||"—")}</li><li>🥈 ID: ${esc(r.second?.studentId||"—")}</li><li>🥉 ID: ${esc(r.third?.studentId||"—")}</li></ul>`:`<p style="color:#a16207">⏳ Result Pending</p>`}</button>`}).join("")}</div>${bulletinGenerator()}</div>`}
+function bulletinGenerator(){return `<div class="card" style="margin-top:30px"><div class="pagehead"><div><h2 class="display">🖼️ Results Bulletin</h2><p class="muted">Generate a poster covering up to 10 competitions.</p></div><button class="btn green" onclick="generateBulletin()">Generate Bulletin</button></div><div id="bulletinBox"></div></div>`}
+function generateBulletin(){let box=document.getElementById("bulletinBox");box.innerHTML=`<div class="poster-wrap" style="margin-top:15px"><canvas id="bulletin" width="900" height="1200"></canvas></div><div class="center"><button class="btn gold" onclick="downloadBulletin()">💾 Download Bulletin</button></div>`;drawBulletin()}
+function drawBulletin(){let c=document.getElementById("bulletin");if(!c)return;let ctx=c.getContext("2d"),t=themes[posterTheme],W=900,H=1200;let bg=ctx.createLinearGradient(0,0,0,H);bg.addColorStop(0,t.bg1);bg.addColorStop(1,t.bg2);ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);ctx.fillStyle=t.card;ctx.strokeStyle=t.stroke;ctx.lineWidth=3;round(ctx,40,40,820,1120,28);ctx.fill();ctx.stroke();ctx.textAlign="center";ctx.fillStyle=t.head;ctx.font="700 22px sans-serif";ctx.fillText("SIRAJUL HUDA ARABIC SCHOOL — RESULTS",450,90);ctx.font="14px sans-serif";ctx.fillStyle=t.sub;ctx.fillText("Milad Fest 2k26 · Competitions 1–"+Math.min(10,state.competitions.length),450,114);let y=160;state.competitions.slice(0,10).forEach((x,i)=>{let r=state.results[x.id];ctx.fillStyle=t.pill;round(ctx,80,y,740,80,16);ctx.fill();ctx.textAlign="left";ctx.fillStyle=t.text;ctx.font="700 18px sans-serif";ctx.fillText(`${i+1}. ${x.name}`,105,y+28);ctx.font="14px sans-serif";ctx.fillStyle=t.sub;let line=r?.published?`🥇 ${student(r.first?.studentId)?.name||"—"}   🥈 ${student(r.second?.studentId)?.name||"—"}   🥉 ${student(r.third?.studentId)?.name||"—"}`:"⏳ Result pending";ctx.fillText(line,105,y+53);y+=96});ctx.textAlign="center";ctx.fillStyle=t.sub;ctx.font="italic 12px sans-serif";ctx.fillText("Generated live from the Results page",450,1135)}
+function downloadBulletin(){let c=document.getElementById("bulletin");if(!c)return;let a=document.createElement("a");a.href=c.toDataURL("image/png");a.download="results-bulletin.png";a.click()}
+function totalPage(){if(!state.totalVisible)return `<div class="container narrow"><div class="pagehead"><div><h1 class="display">🏅 Total Result</h1><p class="muted">Overall standings across every announced competition.</p></div>${live()}</div><div class="empty" style="margin-top:30px"><div style="font-size:32px">🔒</div><p class="display">Total Result Not Published Yet</p><p class="muted">The organizer hasn't made the overall standings public yet.</p></div></div>`;let ts=totals().sort((a,b)=>b.total-a.total);return `<div class="container narrow"><div class="pagehead"><div><h1 class="display">🏅 Total Result</h1><p class="muted">Overall standings across every announced competition.</p></div>${live()}</div><div class="grid grid3" style="margin-top:30px">${ts.slice(0,3).map((g,i)=>`<div class="place ${["first","second","third"][i]}"><span class="medal">${["🥇","🥈","🥉"][i]}</span><span class="label">${["1st Place","2nd Place","3rd Place"][i]}</span><span class="name">${g.name}</span><span>${g.total} Marks</span></div>`).join("")}</div><p class="center muted" style="font-size:12px;margin-top:20px">Scoring: 1st = 10 marks · 2nd = 5 marks · 3rd = 3 marks.</p>${lookup()}</div>`}
+function lookup(){return `<div class="card" style="margin-top:30px"><h2 class="display">🔎 Participant Lookup</h2><p class="muted">Enter a student ID to see announced placements.</p><form onsubmit="lookupDo(event)" style="display:flex;gap:8px;margin-top:15px"><input id="lookupId" class="input" placeholder="Student ID (e.g. K01)"><button class="btn green">Search</button></form><div id="lookupOut"></div></div>`}
+function lookupDo(e){e.preventDefault();let id=document.getElementById("lookupId").value.trim(),s=student(id),out=document.getElementById("lookupOut");if(!s){out.innerHTML='<p class="error">No student found with that ID.</p>';return}let rows=[];Object.entries(state.results).forEach(([cid,r])=>{if(!r.published)return;["first","second","third"].forEach(p=>{if(r[p]?.studentId?.toLowerCase()===id.toLowerCase()){let c=state.competitions.find(x=>x.id===cid);if(c)rows.push([c.name,p])}})});out.innerHTML=`<p><b>${esc(s.name)}</b> · ${groupName(s.groupId)} · ID: ${esc(s.studentId)}</p>${rows.length?`<ul class="list">${rows.map(x=>`<li>${esc(x[0])}<b>${x[1]==="first"?"🥇 1st":x[1]==="second"?"🥈 2nd":"🥉 3rd"}</b></li>`).join("")}</ul>`:'<p class="muted">No announced placements yet.</p>'}`}
+function gallery(){return `<div class="container narrow"><div class="pagehead"><div><h1 class="display">🖼️ Poster Gallery</h1><p class="muted">Posters generated from result pages.</p></div>${live()}</div>${state.gallery.length?`<div class="grid grid3" style="margin-top:30px">${state.gallery.map(p=>`<div class="card"><img src="${p.dataUrl}" style="width:100%;border-radius:10px"><p><b>${esc(p.competitionName)}</b></p><small class="muted">${themes[p.style]?.label||p.style} · ${new Date(p.createdAt).toLocaleDateString()}</small><div class="actions" style="margin-top:10px"><a class="btn green" href="${p.dataUrl}" download="${esc(p.competitionName.replace(/\s+/g,'-'))}-poster.png">Download</a><button class="smallbtn danger" onclick="removePoster(${p.id})">Remove</button></div></div>`).join("")}</div>`:`<div class="empty" style="margin-top:30px"><div style="font-size:32px">🖼️</div><p class="display">No Posters Saved Yet</p><p class="muted">Open an announced result and generate a poster.</p></div>`}</div>`}
+function removePoster(id){state.gallery=state.gallery.filter(p=>p.id!==id);persist();render()}
+function adminLogin(){if(state.signed)return adminPanel();return `<div class="container narrow center" style="max-width:500px"><div style="font-size:40px">🔐</div><h1 class="display">${loginView==="signin"?"Admin Sign In":loginView==="forgot-email"?"Forgot Password":loginView==="forgot-otp"?"Enter OTP":"Set New Password"}</h1><p class="muted">${loginView==="signin"?"Manage competitions and publish results.":loginView==="forgot-email"?"Enter your admin email to receive a one-time code.":loginView==="forgot-otp"?"Enter the 6-digit code to continue.":"Choose a new password for your admin account."}</p>${loginView==="signin"?signin():loginView==="forgot-email"?forgotEmailView():loginView==="forgot-otp"?otpView():newPassView()}</div>`}
+function box(content){return `<div class="card" style="margin-top:25px;text-align:left">${content}</div>`}
+function signin(){return box(`<div class="field"><label>Email</label><input id="lemail" class="input" placeholder="${ADMIN_EMAIL}"></div><div class="field" style="margin-top:14px"><label>Password</label><input id="lpass" type="password" class="input"></div>${loginError?`<p class="error">${loginError}</p>`:""}<button class="btn green" style="width:100%;margin-top:14px" onclick="signIn()">Sign In →</button><button class="smallbtn" style="width:100%;margin-top:10px" onclick="loginView='forgot-email';loginError='';render()">Forgot password?</button><p class="muted center" style="font-size:11px;margin-top:12px">Standalone HTML version: data is stored locally in this browser.</p>`)}
+function forgotEmailView(){return box(`<div class="field"><label>Admin Email</label><input id="femail" class="input" placeholder="${ADMIN_EMAIL}"></div>${forgotError?`<p class="error">${forgotError}</p>`:""}<button class="btn green" style="width:100%;margin-top:14px" onclick="sendOtp()">Send OTP →</button><button class="smallbtn" style="width:100%;margin-top:10px" onclick="loginView='signin';render()">← Back to Sign In</button>`)}
+function otpView(){return box(`<div class="notice center">Preview mode — code: <b style="font-size:20px;letter-spacing:.2em">${otp}</b></div><div class="field" style="margin-top:14px"><label>Enter OTP</label><input id="otpin" class="input" maxlength="6" style="text-align:center"></div>${forgotError?`<p class="error">${forgotError}</p>`:""}<button class="btn green" style="width:100%;margin-top:14px" onclick="verifyOtp()">Verify Code →</button>`)}
+function newPassView(){return box(`<div class="field"><label>New Password</label><input id="np1" type="password" class="input"></div><div class="field" style="margin-top:14px"><label>Confirm New Password</label><input id="np2" type="password" class="input"></div>${forgotError?`<p class="error">${forgotError}</p>`:""}<button class="btn green" style="width:100%;margin-top:14px" onclick="saveNewPass()">Save New Password →</button>`)}
+function signIn(){let e=document.getElementById("lemail").value.trim().toLowerCase(),p=document.getElementById("lpass").value;if(e===ADMIN_EMAIL.toLowerCase()&&p===state.password){state.signed=true;loginError="";persist();render()}else{loginError="Incorrect email or password.";render()}}
+function sendOtp(){let e=document.getElementById("femail").value.trim().toLowerCase();if(e!==ADMIN_EMAIL.toLowerCase()){forgotError="That email doesn't match the admin account.";render();return}otp=String(Math.floor(100000+Math.random()*900000));forgotEmail=e;loginView="forgot-otp";forgotError="";render()}
+function verifyOtp(){let x=document.getElementById("otpin").value.trim();if(x!==otp){forgotError="Incorrect code. Please try again.";render();return}forgotError="";loginView="forgot-newpass";render()}
+function saveNewPass(){let a=document.getElementById("np1").value,b=document.getElementById("np2").value;if(a.length<6){forgotError="Password must be at least 6 characters.";render();return}if(a!==b){forgotError="Passwords don't match.";render();return}state.password=a;loginView="signin";loginError="";persist();render()}
+function adminPanel(){let announced=Object.values(state.results).filter(r=>r.published).length;return `<div class="container"><div class="tabs">${[["dashboard","📊 Dashboard"],["competitions","🏆 Competitions"],["students","🧑‍🎓 Students"],["results","🥇 Results"]].map(x=>`<button class="pill ${adminTab===x[0]?'active':''}" onclick="adminTab='${x[0]}';render()">${x[1]}</button>`).join("")}<button class="smallbtn" onclick="state.signed=false;persist();render()" style="margin-left:auto">Sign Out</button></div>${adminTab==="dashboard"?dashboard(announced):adminTab==="competitions"?manageCompetitions():adminTab==="students"?manageStudents():manageResults()}</div>`}
+function dashboard(a){let ts=totals().sort((x,y)=>y.total-x.total);return `<div class="grid grid2" style="margin-top:25px"><div class="grid grid2"><div class="card"><b style="font-size:28px">${state.competitions.length}</b><p class="muted">Competitions</p></div><div class="card"><b style="font-size:28px">${state.students.length}</b><p class="muted">Students</p></div><div class="card"><b style="font-size:28px;color:#059669">${a}</b><p class="muted">Announced</p></div><div class="card"><b style="font-size:28px;color:#ca8a04">${state.competitions.length-a}</b><p class="muted">Pending</p></div></div><div class="card"><h3 class="display">Total Marks (Kanz vs Jawhar)</h3>${ts.map((g,i)=>`<div class="list"><span>${i===0?"🥇":"🥈"} <b>${g.name}</b></span><b>${g.total}</b></div>`).join("")}</div></div>${box(`<h3 class="display">Total Result Page</h3><p class="muted">Controls whether the public Total Result page is visible.</p><div class="rowtop"><b>${state.totalVisible?"🟢 Visible to public":"🔒 Hidden from public"}</b><button class="btn ${state.totalVisible?'gold':'green'}" onclick="state.totalVisible=!state.totalVisible;persist();render()">${state.totalVisible?"Hide":"Show to Public"}</button></div>`)}`}
+function manageCompetitions(){return `<div class="grid grid2" style="margin-top:25px"><div class="card"><h2 class="display">Add Competition</h2><div class="field"><label>Name</label><input id="cn" class="input" placeholder="e.g. Calligraphy Contest"></div><div class="field" style="margin-top:14px"><label>Category</label><select id="cc" class="select">${CATEGORIES.map(c=>`<option>${c}</option>`).join("")}</select></div><button class="btn green" style="margin-top:15px" onclick="addComp()">Add Competition</button></div><div><h2 class="display">All Competitions</h2><ul class="list">${state.competitions.map(c=>`<li><span>${ICONS[c.category]||"🏅"} <b>${esc(c.name)}</b><small class="muted"> · ${c.category} · ${state.results[c.id]?.published?"🟢 Announced":"🟡 Pending"}</small></span><span><button class="smallbtn" onclick="editComp('${c.id}')">Edit</button> <button class="smallbtn danger" onclick="deleteComp('${c.id}')">Delete</button></span></li>`).join("")}</ul></div></div>`}
+function addComp(){let n=document.getElementById("cn").value.trim(),c=document.getElementById("cc").value;if(!n)return;state.competitions.push({id:Date.now().toString(36),name:n,category:c});persist();render()}
+function editComp(id){let c=state.competitions.find(x=>x.id===id),n=prompt("Competition name:",c.name);if(n===null)return;let cat=prompt("Category:",c.category);if(n.trim()){c.name=n.trim();if(CATEGORIES.includes(cat))c.category=cat;persist();render()}}
+function deleteComp(id){if(!confirm("Delete this competition? This also removes its result."))return;state.competitions=state.competitions.filter(c=>c.id!==id);delete state.results[id];persist();render()}
+function manageStudents(){return `<div class="grid grid2" style="margin-top:25px">${INITIAL_GROUPS.map(g=>{let ss=state.students.filter(s=>s.groupId===g.id);return `<div class="card"><h2 class="display">${g.name}</h2><p class="muted">Students in this group.</p><ul class="list">${ss.map(s=>`<li><span><b>${esc(s.name)}</b><small class="muted"> · ID: ${esc(s.studentId)}</small></span><button class="smallbtn danger" onclick="delStudent('${s.id}')">Delete</button></li>`).join("")||"<li>No students yet.</li>"}</ul><div class="field"><label>Student ID</label><input id="sid-${g.id}" class="input" placeholder="e.g. K01"></div><div class="field" style="margin-top:8px"><label>Student Name</label><input id="sn-${g.id}" class="input"></div><button class="btn green" style="margin-top:10px" onclick="addStudent('${g.id}')">Add Student</button></div>`}).join("")}</div>`}
+function addStudent(gid){let id=document.getElementById("sid-"+gid).value.trim(),n=document.getElementById("sn-"+gid).value.trim();if(!id||!n)return;state.students.push({id:Date.now().toString(36),groupId:gid,studentId:id,name:n});persist();render()}
+function delStudent(id){if(!confirm("Remove this student from the roster?"))return;state.students=state.students.filter(s=>s.id!==id);persist();render()}
+function manageResults(){return `<div style="max-width:650px;margin-top:25px"><div class="field"><label>Select Competition</label><select id="rc" class="select" onchange="selectedAdminComp(this.value)"><option value="">Choose a competition...</option>${state.competitions.map(c=>`<option value="${c.id}">${esc(c.name)} ${state.results[c.id]?.published?"🟢":"🟡"}</option>`).join("")}</select></div><div id="resultForm"></div></div>`}
+function selectedAdminComp(id){let c=state.competitions.find(x=>x.id===id),r=state.results[id]||{};if(!c){document.getElementById("resultForm").innerHTML="";return}let html=`<div class="card" style="margin-top:20px"><p class="muted">Status: ${r.published?"🟢 Announced":"🟡 Not Announced"}</p>`;[["first","🥇 1st Place (10 marks)"],["second","🥈 2nd Place (5 marks)"],["third","🥉 3rd Place (3 marks)"]].forEach(([p,label])=>{let g=r[p]?.groupId||"g1",sid=r[p]?.studentId||"";html+=`<div class="card" style="margin-top:12px;padding:12px"><b>${label}</b><select id="g-${p}" class="select" style="margin-top:8px" onchange="studentSelectOptions('${p}')">${INITIAL_GROUPS.map(x=>`<option value="${x.id}" ${x.id===g?"selected":""}>${x.name}</option>`).join("")}</select><select id="s-${p}" class="select" style="margin-top:8px">${state.students.filter(s=>s.groupId===g).map(s=>`<option value="${s.studentId}" ${s.studentId===sid?"selected":""}>${esc(s.name)} (ID: ${s.studentId})</option>`).join("")}</select></div>`});html+=`<div class="actions" style="justify-content:flex-start"><button class="btn gold" onclick="publishResult('${id}')">${r.published?"Update Result":"Publish Result"}</button>${r.published?`<button class="smallbtn" onclick="revokeResult('${id}')">Revoke Announcement</button>`:""}</div><p class="muted" style="font-size:11px">Publish here, then open Results. Marks count toward Total Result automatically.</p></div>`;document.getElementById("resultForm").innerHTML=html}
+function studentSelectOptions(p){let g=document.getElementById("g-"+p).value,s=document.getElementById("s-"+p);s.innerHTML=state.students.filter(x=>x.groupId===g).map(x=>`<option value="${x.studentId}">${esc(x.name)} (ID: ${x.studentId})</option>`).join("")}
+function publishResult(id){let r={published:true};["first","second","third"].forEach(p=>r[p]={groupId:document.getElementById("g-"+p).value,studentId:document.getElementById("s-"+p).value});state.results[id]=r;justPublished=id;setTimeout(()=>{justPublished=null},3000);persist();render()}
+function revokeResult(id){state.results[id]={...(state.results[id]||{}),published:false};persist();render()}
+function footer(){return `<footer><div class="footerin"><div><strong>🕌 Sirajul Huda Arabic School</strong><div>Milad Fest 2K26 · لوها Waves of Love · Unnalu, Koyyur</div></div><div>© 2026 Sirajul Huda Arabic School, Unnalu, Koyyur.</div></div></footer>`}
+function render(){let content=state.page==="home"?home():state.page==="competitions"?competitions():state.page==="result"?resultPage():state.page==="results"?resultsPage():state.page==="totalresult"?totalPage():state.page==="gallery"?gallery():adminLogin();document.getElementById("app").innerHTML=`<div class="preview">UI PREVIEW — standalone browser version. Changes are stored locally.</div>${nav()}<main>${content}</main>${footer()}`;if(state.page==="result"&&state.selectedId&&state.results[state.selectedId]?.published){drawPoster(state.selectedId)}}
+setInterval(()=>{if(state.page==="home")render()},1000);
+render();
