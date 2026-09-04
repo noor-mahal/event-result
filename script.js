@@ -21,22 +21,83 @@ function live(){return `<span class="live"><i class="dot"></i>Live</span>`}
 // ============================================================
 function newId(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
 
-async function loadAll(){
-  const [{data:groups},{data:students},{data:competitions},{data:results},{data:gallery}]=await Promise.all([
-    supabase.from("groups").select("*").order("id"),
-    supabase.from("students").select("*"),
-    supabase.from("competitions").select("*").order("id"),
-    supabase.from("results").select("*"),
-    supabase.from("gallery").select("*").order("created_at",{ascending:false})
-  ]);
-  state.groups=groups||[];
-  state.students=(students||[]).map(s=>({id:s.id,groupId:s.group_id,studentId:s.student_code,name:s.name}));
-  state.competitions=competitions||[];
-  state.results={};
-  (results||[]).forEach(r=>{state.results[r.competition_id]={first:r.first||[],second:r.second||[],third:r.third||[],published:r.published}});
-  state.gallery=(gallery||[]).map(p=>({id:p.id,dataUrl:p.image_data,competitionName:p.competition_name,style:p.style,createdAt:new Date(p.created_at).getTime()}));
-  state.loading=false;
-  render();
+async function loadAll() {
+  try {
+    const [
+      groupsRes,
+      studentsRes,
+      competitionsRes,
+      resultsRes,
+      galleryRes
+    ] = await Promise.all([
+      supabase.from("groups").select("*").order("id"),
+      supabase.from("students").select("*"),
+      supabase.from("competitions").select("*").order("id"),
+      supabase.from("results").select("*"),
+      supabase.from("gallery").select("*").order("created_at", { ascending: false })
+    ]);
+
+    const errors = [
+      groupsRes.error,
+      studentsRes.error,
+      competitionsRes.error,
+      resultsRes.error,
+      galleryRes.error
+    ].filter(Boolean);
+
+    if (errors.length) {
+      console.error("Supabase error:", errors);
+      document.getElementById("app").innerHTML =
+        `<div class="preview">
+          Unable to load live data.<br>
+          <small>${errors[0].message}</small>
+        </div>`;
+      state.loading = false;
+      return;
+    }
+
+    state.groups = groupsRes.data || [];
+
+    state.students = (studentsRes.data || []).map(s => ({
+      id: s.id,
+      groupId: s.group_id,
+      studentId: s.student_code,
+      name: s.name
+    }));
+
+    state.competitions = competitionsRes.data || [];
+
+    state.results = {};
+    (resultsRes.data || []).forEach(r => {
+      state.results[r.competition_id] = {
+        first: r.first || [],
+        second: r.second || [],
+        third: r.third || [],
+        published: r.published
+      };
+    });
+
+    state.gallery = (galleryRes.data || []).map(p => ({
+      id: p.id,
+      dataUrl: p.image_data,
+      competitionName: p.competition_name,
+      style: p.style,
+      createdAt: new Date(p.created_at).getTime()
+    }));
+
+    state.loading = false;
+    render();
+
+  } catch (err) {
+    console.error("Load error:", err);
+    state.loading = false;
+
+    document.getElementById("app").innerHTML =
+      `<div class="preview">
+        Unable to connect to live database.<br>
+        <small>${err.message}</small>
+      </div>`;
+  }
 }
 
 // Live updates: whenever ANYONE (or the admin) changes data, every open
