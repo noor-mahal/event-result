@@ -21,94 +21,111 @@ function live(){return `<span class="live"><i class="dot"></i>Live</span>`}
 // ============================================================
 function newId(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
 
-async function loadAll() {
+async function loadAll(){
+  const requests = [
+    ["groups", supabase.from("groups").select("*").order("id")],
+    ["students", supabase.from("students").select("*")],
+    ["competitions", supabase.from("competitions").select("*").order("id")],
+    ["results", supabase.from("results").select("*")],
+    ["gallery", supabase.from("gallery").select("*").order("created_at",{ascending:false})]
+  ];
+
   try {
-    const [
-      groupsRes,
-      studentsRes,
-      competitionsRes,
-      resultsRes,
-      galleryRes
-    ] = await Promise.all([
-      supabase.from("groups").select("*").order("id"),
-      supabase.from("students").select("*"),
-      supabase.from("competitions").select("*").order("id"),
-      supabase.from("results").select("*"),
-      supabase.from("gallery").select("*").order("created_at", { ascending: false })
+    // Prevent one slow network request from leaving the page on
+    // "Loading live data…" forever.
+    const timeout = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Supabase request timed out. Check that your Supabase project is active and reachable.")), 15000)
+    );
+
+    const responses = await Promise.race([
+      Promise.all(requests.map(([,request]) => request)),
+      timeout
     ]);
 
-    const errors = [
-      groupsRes.error,
-      studentsRes.error,
-      competitionsRes.error,
-      resultsRes.error,
-      galleryRes.error
-    ].filter(Boolean);
+    const errors = responses
+      .map((response, i) => response.error ? `${requests[i][0]}: ${response.error.message}` : null)
+      .filter(Boolean);
 
     if (errors.length) {
-      console.error("Supabase error:", errors);
-      document.getElementById("app").innerHTML =
-        `<div class="preview">
-          Unable to load live data.<br>
-          <small>${errors[0].message}</small>
-        </div>`;
-      state.loading = false;
-      return;
+      throw new Error(errors.join("\n"));
     }
 
-    state.groups = groupsRes.data || [];
+    const [
+      {data:groups},
+      {data:students},
+      {data:competitions},
+      {data:results},
+      {data:gallery}
+    ] = responses;
 
-    state.students = (studentsRes.data || []).map(s => ({
-      id: s.id,
-      groupId: s.group_id,
-      studentId: s.student_code,
-      name: s.name
+    state.groups=groups||[];
+    state.students=(students||[]).map(s=>({
+      id:s.id,
+      groupId:s.group_id,
+      studentId:s.student_code,
+      name:s.name
     }));
-
-    state.competitions = competitionsRes.data || [];
-
-    state.results = {};
-    (resultsRes.data || []).forEach(r => {
-      state.results[r.competition_id] = {
-        first: r.first || [],
-        second: r.second || [],
-        third: r.third || [],
-        published: r.published
+    state.competitions=competitions||[];
+    state.results={};
+    (results||[]).forEach(r=>{
+      state.results[r.competition_id]={
+        first:r.first||[],
+        second:r.second||[],
+        third:r.third||[],
+        published:r.published
       };
     });
-
-    state.gallery = (galleryRes.data || []).map(p => ({
-      id: p.id,
-      dataUrl: p.image_data,
-      competitionName: p.competition_name,
-      style: p.style,
-      createdAt: new Date(p.created_at).getTime()
+    state.gallery=(gallery||[]).map(p=>({
+      id:p.id,
+      dataUrl:p.image_data,
+      competitionName:p.competition_name,
+      style:p.style,
+      createdAt:new Date(p.created_at).getTime()
     }));
 
-    state.loading = false;
+    state.loading=false;
+    render();
+    return true;
+  } catch(error) {
+    console.error("Supabase load error:", error);
+    state.loading=false;
     render();
 
-  } catch (err) {
-    console.error("Load error:", err);
-    state.loading = false;
-
-    document.getElementById("app").innerHTML =
-      `<div class="preview">
-        Unable to connect to live database.<br>
-        <small>${err.message}</small>
+    const app=document.getElementById("app");
+    if(app){
+      app.innerHTML=`<div class="preview" style="padding:30px;text-align:center">
+        <h2>Unable to load live data</h2>
+        <p style="margin-top:10px">${esc(error?.message||"Unknown Supabase error")}</p>
+        <button class="btn green" style="margin-top:15px" onclick="loadAll()">Retry</button>
       </div>`;
+    }
+    return false;
   }
 }
 
 // Live updates: whenever ANYONE (or the admin) changes data, every open
 // tab re-fetches and re-renders automatically — no refresh needed.
+let realtimeReloading=false;
+
+async function reloadFromRealtime(){
+  if(realtimeReloading) return;
+  realtimeReloading=true;
+  try {
+    await loadAll();
+  } finally {
+    realtimeReloading=false;
+  }
+}
+
 function subscribeRealtime(){
   supabase.channel("public-data")
-    .on("postgres_changes",{event:"*",schema:"public",table:"results"},loadAll)
-    .on("postgres_changes",{event:"*",schema:"public",table:"competitions"},loadAll)
-    .on("postgres_changes",{event:"*",schema:"public",table:"students"},loadAll)
-    .on("postgres_changes",{event:"*",schema:"public",table:"gallery"},loadAll)
-    .subscribe();
+    .on("postgres_changes",{event:"*",schema:"public",table:"results"},reloadFromRealtime)
+    .on("postgres_changes",{event:"*",schema:"public",table:"competitions"},reloadFromRealtime)
+    .on("postgres_changes",{event:"*",schema:"public",table:"students"},reloadFromRealtime)
+    .on("postgres_changes",{event:"*",schema:"public",table:"gallery"},reloadFromRealtime)
+    .subscribe((status)=>{
+      console.log("Realtime status:",status);
+    });
 }
 
 async function initAuth(){
@@ -203,4 +220,22 @@ function render(){
   if(state.page==="result"&&state.selectedId&&state.results[state.selectedId]?.published){drawPoster(state.selectedId)}
 }
 setInterval(()=>{if(state.page==="home")render()},1000);
-(async function boot(){await initAuth();await loadAll();subscribeRealtime()})();
+(async function boot(){
+  try {
+    await initAuth();
+    const loaded=await loadAll();
+    if(loaded) subscribeRealtime();
+  } catch(error) {
+    console.error("Application startup error:", error);
+    state.loading=false;
+    render();
+    const app=document.getElementById("app");
+    if(app){
+      app.innerHTML=`<div class="preview" style="padding:30px;text-align:center">
+        <h2>Website startup error</h2>
+        <p style="margin-top:10px">${esc(error?.message||"Unknown error")}</p>
+        <button class="btn green" style="margin-top:15px" onclick="location.reload()">Reload</button>
+      </div>`;
+    }
+  }
+})();
