@@ -17,11 +17,11 @@ function newId(){return Date.now().toString(36)+Math.random().toString(36).slice
 async function loadAll(){
   state.loading=true; render();
   const jobs=[
-    ["groups",()=>supabase.from("groups").select("*").order("id")],
-    ["students",()=>supabase.from("students").select("*")],
-    ["competitions",()=>supabase.from("competitions").select("*").order("id")],
-    ["results",()=>supabase.from("results").select("*")],
-    ["gallery",()=>supabase.from("gallery").select("*").order("created_at",{ascending:false})]
+    ["groups",()=>appSupabase.from("groups").select("*").order("id")],
+    ["students",()=>appSupabase.from("students").select("*")],
+    ["competitions",()=>appSupabase.from("competitions").select("*").order("id")],
+    ["results",()=>appSupabase.from("results").select("*")],
+    ["gallery",()=>appSupabase.from("gallery").select("*").order("created_at",{ascending:false})]
   ];
   const settled=await Promise.all(jobs.map(async([name,fn])=>{
     try{const r=await fn();return [name,r.data,r.error]}catch(e){return[name,null,e]}
@@ -44,8 +44,8 @@ async function loadAll(){
 let realtimeTimer=null,realtimeChannel=null;
 function refreshFromRealtime(){clearTimeout(realtimeTimer);realtimeTimer=setTimeout(()=>loadAll(),250)}
 function subscribeRealtime(){
-  if(realtimeChannel)try{supabase.removeChannel(realtimeChannel)}catch(e){}
-  realtimeChannel=supabase.channel("public-data")
+  if(realtimeChannel)try{appSupabase.removeChannel(realtimeChannel)}catch(e){}
+  realtimeChannel=appSupabase.channel("public-data")
     .on("postgres_changes",{event:"*",schema:"public",table:"groups"},refreshFromRealtime)
     .on("postgres_changes",{event:"*",schema:"public",table:"results"},refreshFromRealtime)
     .on("postgres_changes",{event:"*",schema:"public",table:"competitions"},refreshFromRealtime)
@@ -56,11 +56,11 @@ function subscribeRealtime(){
 
 async function initAuth(){
   try{
-    const {data,error}=await supabase.auth.getSession();
+    const {data,error}=await appSupabase.auth.getSession();
     if(error)console.warn("Auth session:",error.message);
     state.signed=!!data?.session;
   }catch(e){console.warn("Auth init:",e);state.signed=false}
-  supabase.auth.onAuthStateChange((event,session)=>{
+  appSupabase.auth.onAuthStateChange((event,session)=>{
     if(event==="PASSWORD_RECOVERY"){state.signed=true;loginView="forgot-newpass";state.page="admin";render();return}
     state.signed=!!session;
     render();
@@ -106,12 +106,12 @@ function drawPoster(cid){
 }
 function round(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.quadraticCurveTo(x+w,y,x+w,y+r);ctx.lineTo(x+w,y+h-r);ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);ctx.lineTo(x+r,y+h);ctx.quadraticCurveTo(x,y+h,x,y+h-r);ctx.lineTo(x,y+r);ctx.quadraticCurveTo(x,y,x+r,y);ctx.closePath()}
 function wrap(ctx,text,x,y,max,line){let words=String(text||"").split(" "),s="",n=[];words.forEach(w=>{let z=s?s+" "+w:w;if(ctx.measureText(z).width>max&&s){n.push(s);s=w}else s=z});if(s)n.push(s);n.forEach((v,i)=>ctx.fillText(v,x,y+i*line))}
-async function savePoster(cid){let c=state.competitions.find(x=>String(x.id)===String(cid)),canvas=document.getElementById("poster");if(!canvas||!c)return;drawPoster(cid);let data=canvas.toDataURL("image/png");let a=document.createElement("a");a.href=data;a.download=`${c.name.replace(/\s+/g,"-")}-${posterTheme}-poster.png`;a.click();const{error}=await supabase.from("gallery").insert({competition_name:c.name,style:posterTheme,image_data:data});if(error)alert("Could not save to Gallery: "+error.message);else alert("Poster saved to Gallery.")}
+async function savePoster(cid){let c=state.competitions.find(x=>String(x.id)===String(cid)),canvas=document.getElementById("poster");if(!canvas||!c)return;drawPoster(cid);let data=canvas.toDataURL("image/png");let a=document.createElement("a");a.href=data;a.download=`${c.name.replace(/\s+/g,"-")}-${posterTheme}-poster.png`;a.click();const{error}=await appSupabase.from("gallery").insert({competition_name:c.name,style:posterTheme,image_data:data});if(error)alert("Could not save to Gallery: "+error.message);else alert("Poster saved to Gallery.")}
 
 function resultsPage(){return `<div class="container narrow"><div class="pagehead"><div><h1 class="display">All Results</h1><p class="muted">Every competition, updated live.</p></div>${live()}</div><div class="grid grid2" style="margin-top:30px">${state.competitions.map(c=>{let r=state.results[c.id];return `<button class="card compcard" onclick="go('result','${esc(c.id)}')"><h3 class="display" style="color:#064e3b">${esc(c.name)}</h3>${r?.published?`<ul class="muted resultlist"><li>🥇 ID: ${esc((r.first||[])[0]?.studentId||"—")}</li><li>🥈 ID: ${esc((r.second||[])[0]?.studentId||"—")}</li><li>🥉 ID: ${esc((r.third||[])[0]?.studentId||"—")}</li></ul>`:`<p style="color:#a16207">⏳ Result Pending</p>`}</button>`}).join("")}</div></div>`}
 function totalPage(){let ts=totals().sort((a,b)=>b.total-a.total);return `<div class="container narrow"><div class="pagehead"><div><h1 class="display">🏅 Total Result</h1><p class="muted">Overall standings across every announced competition.</p></div>${live()}</div><div class="grid grid3" style="margin-top:30px">${ts.slice(0,3).map((g,i)=>`<div class="place ${["first","second","third"][i]}"><span class="medal">${["🥇","🥈","🥉"][i]}</span><span class="label">${["1st Place","2nd Place","3rd Place"][i]}</span><span class="name">${esc(g.name)}</span><span>${g.total} Marks</span></div>`).join("")}</div><p class="center muted" style="font-size:12px;margin-top:20px">Scoring: 1st = 20 marks · 2nd = 10 marks · 3rd = 7 marks.</p></div>`}
 function gallery(){return `<div class="container narrow"><div class="pagehead"><div><h1 class="display">🖼️ Poster Gallery</h1><p class="muted">Posters generated from result pages.</p></div>${live()}</div>${state.gallery.length?`<div class="grid grid3" style="margin-top:30px">${state.gallery.map(p=>`<div class="card"><img src="${esc(p.dataUrl)}" style="width:100%;border-radius:10px"><p><b>${esc(p.competitionName)}</b></p><small class="muted">${themes[p.style]?.label||esc(p.style)} · ${new Date(p.createdAt).toLocaleDateString()}</small><div class="actions" style="margin-top:10px"><a class="btn green" href="${esc(p.dataUrl)}" download="${esc(p.competitionName.replace(/\s+/g,'-'))}-poster.png">Download</a>${state.signed?`<button class="smallbtn danger" onclick="removePoster('${esc(p.id)}')">Remove</button>`:""}</div></div>`).join("")}</div>`:`<div class="empty" style="margin-top:30px"><div style="font-size:32px">🖼️</div><p class="display">No Posters Saved Yet</p></div>`}</div>`}
-async function removePoster(id){if(!confirm("Remove this poster?"))return;const{error}=await supabase.from("gallery").delete().eq("id",id);if(error)alert(error.message);else loadAll()}
+async function removePoster(id){if(!confirm("Remove this poster?"))return;const{error}=await appSupabase.from("gallery").delete().eq("id",id);if(error)alert(error.message);else loadAll()}
 
 function adminLogin(){if(state.signed&&loginView!=="forgot-newpass")return adminPanel();return `<div class="container narrow center" style="max-width:500px"><div style="font-size:40px">🔐</div><h1 class="display">${loginView==="signin"?"Admin Sign In":loginView==="forgot-email"?"Forgot Password":"Set New Password"}</h1><p class="muted">${loginView==="signin"?"Manage competitions and publish results.":loginView==="forgot-email"?"Enter your admin email to receive a password reset link.":"Choose a new password for your admin account."}</p>${loginView==="signin"?signin():loginView==="forgot-email"?forgotEmailView():newPassView()}</div>`}
 function box(content){return `<div class="card" style="margin-top:25px;text-align:left">${content}</div>`}
@@ -124,7 +124,7 @@ async function signIn(e){
   loginError="";
   if(button){button.disabled=true;button.textContent="Signing in…"}
   try{
-    const{data,error}=await supabase.auth.signInWithPassword({email,password});
+    const{data,error}=await appSupabase.auth.signInWithPassword({email,password});
     if(error){
       const msg=String(error.message||"");
       if(/email not confirmed/i.test(msg))loginError="Email is not confirmed in Supabase Authentication.";
@@ -142,7 +142,7 @@ async function sendReset(e){
   forgotError="";
   try{
     const redirectTo=window.location.origin+window.location.pathname;
-    const{error}=await supabase.auth.resetPasswordForEmail(email,{redirectTo});
+    const{error}=await appSupabase.auth.resetPasswordForEmail(email,{redirectTo});
     if(error){forgotError=error.message;render();return}
     alert("Reset link sent. Check the admin email inbox.");
     loginView="signin";render();
@@ -154,12 +154,12 @@ async function saveNewPass(e){
   if(a.length<6){forgotError="Password must be at least 6 characters.";render();return}
   if(a!==b){forgotError="Passwords don't match.";render();return}
   try{
-    const{error}=await supabase.auth.updateUser({password:a});
+    const{error}=await appSupabase.auth.updateUser({password:a});
     if(error){forgotError=error.message;render();return}
     forgotError="";loginView="signin";alert("Password updated successfully.");render();
   }catch(err){forgotError=err?.message||"Unable to update password.";render()}
 }
-async function signOut(){await supabase.auth.signOut();state.signed=false;loginView="signin";state.page="admin";render()}
+async function signOut(){await appSupabase.auth.signOut();state.signed=false;loginView="signin";state.page="admin";render()}
 
 function adminPanel(){
   let announced=Object.values(state.results).filter(r=>r?.published).length;
@@ -167,20 +167,20 @@ function adminPanel(){
 }
 function dashboard(a){let ts=totals().sort((x,y)=>y.total-x.total);return `<div class="grid grid2" style="margin-top:25px"><div class="grid grid2"><div class="card"><b style="font-size:28px">${state.competitions.length}</b><p class="muted">Competitions</p></div><div class="card"><b style="font-size:28px">${state.students.length}</b><p class="muted">Students</p></div><div class="card"><b style="font-size:28px">${a}</b><p class="muted">Announced</p></div><div class="card"><b style="font-size:28px">${state.competitions.length-a}</b><p class="muted">Pending</p></div></div><div class="card"><h3 class="display">Total Marks</h3>${ts.map((g,i)=>`<div class="list"><span>${i===0?"🥇":"🥈"} <b>${esc(g.name)}</b></span><b>${g.total}</b></div>`).join("")}</div></div>`}
 function manageCompetitions(){return `<div class="grid grid2" style="margin-top:25px"><div class="card"><h2 class="display">Add Competition</h2><div class="field"><label>Name</label><input id="cn" class="input" placeholder="Competition name"></div><div class="field" style="margin-top:14px"><label>Category</label><select id="cc" class="select">${CATEGORIES.map(c=>`<option>${c}</option>`).join("")}</select></div><button class="btn green" style="margin-top:15px" onclick="addComp()">Add Competition</button></div><div><h2 class="display">All Competitions</h2><ul class="list">${state.competitions.map(c=>`<li><span>${ICONS[c.category]||"🏅"} <b>${esc(c.name)}</b><small class="muted"> · ${esc(c.category)} · ${state.results[c.id]?.published?"🟢 Announced":"🟡 Pending"}</small></span><span><button class="smallbtn" onclick="editComp('${esc(c.id)}')">Edit</button> <button class="smallbtn danger" onclick="deleteComp('${esc(c.id)}')">Delete</button></span></li>`).join("")}</ul></div></div>`}
-async function addComp(){let n=document.getElementById("cn")?.value.trim(),c=document.getElementById("cc")?.value;if(!n)return;const{error}=await supabase.from("competitions").insert({id:newId(),name:n,category:c});if(error)alert(error.message);else loadAll()}
-async function editComp(id){let c=state.competitions.find(x=>String(x.id)===String(id));if(!c)return;let n=prompt("Competition name:",c.name);if(n===null)return;let cat=prompt("Category:",c.category);if(!n.trim())return;let patch={name:n.trim()};if(CATEGORIES.includes(cat))patch.category=cat;const{error}=await supabase.from("competitions").update(patch).eq("id",id);if(error)alert(error.message);else loadAll()}
-async function deleteComp(id){if(!confirm("Delete this competition? This may also remove its result."))return;const{error}=await supabase.from("competitions").delete().eq("id",id);if(error)alert(error.message);else loadAll()}
+async function addComp(){let n=document.getElementById("cn")?.value.trim(),c=document.getElementById("cc")?.value;if(!n)return;const{error}=await appSupabase.from("competitions").insert({id:newId(),name:n,category:c});if(error)alert(error.message);else loadAll()}
+async function editComp(id){let c=state.competitions.find(x=>String(x.id)===String(id));if(!c)return;let n=prompt("Competition name:",c.name);if(n===null)return;let cat=prompt("Category:",c.category);if(!n.trim())return;let patch={name:n.trim()};if(CATEGORIES.includes(cat))patch.category=cat;const{error}=await appSupabase.from("competitions").update(patch).eq("id",id);if(error)alert(error.message);else loadAll()}
+async function deleteComp(id){if(!confirm("Delete this competition? This may also remove its result."))return;const{error}=await appSupabase.from("competitions").delete().eq("id",id);if(error)alert(error.message);else loadAll()}
 function manageStudents(){return `<div class="grid grid2" style="margin-top:25px">${state.groups.map(g=>{let ss=state.students.filter(s=>String(s.groupId)===String(g.id));return `<div class="card"><h2 class="display">${esc(g.name)}</h2><ul class="list">${ss.map(s=>`<li><span><b>${esc(s.name)}</b><small class="muted"> · ID: ${esc(s.studentId)}</small></span><button class="smallbtn danger" onclick="delStudent('${esc(s.id)}')">Delete</button></li>`).join("")||"<li>No students yet.</li>"}</ul><div class="field"><label>Student ID</label><input id="sid-${esc(g.id)}" class="input" placeholder="e.g. K01"></div><div class="field" style="margin-top:8px"><label>Student Name</label><input id="sn-${esc(g.id)}" class="input"></div><button class="btn green" style="margin-top:10px" onclick="addStudent('${esc(g.id)}')">Add Student</button></div>`}).join("")}</div>`}
-async function addStudent(gid){let id=document.getElementById("sid-"+gid)?.value.trim(),n=document.getElementById("sn-"+gid)?.value.trim();if(!id||!n)return;const{error}=await supabase.from("students").insert({id:newId(),group_id:gid,student_code:id,name:n});if(error)alert(error.message);else loadAll()}
-async function delStudent(id){if(!confirm("Remove this student?"))return;const{error}=await supabase.from("students").delete().eq("id",id);if(error)alert(error.message);else loadAll()}
+async function addStudent(gid){let id=document.getElementById("sid-"+gid)?.value.trim(),n=document.getElementById("sn-"+gid)?.value.trim();if(!id||!n)return;const{error}=await appSupabase.from("students").insert({id:newId(),group_id:gid,student_code:id,name:n});if(error)alert(error.message);else loadAll()}
+async function delStudent(id){if(!confirm("Remove this student?"))return;const{error}=await appSupabase.from("students").delete().eq("id",id);if(error)alert(error.message);else loadAll()}
 function manageResults(){return `<div style="max-width:650px;margin-top:25px"><div class="field"><label>Select Competition</label><select id="rc" class="select" onchange="selectedAdminComp(this.value)"><option value="">Choose a competition...</option>${state.competitions.map(c=>`<option value="${esc(c.id)}">${esc(c.name)} ${state.results[c.id]?.published?"🟢":"🟡"}</option>`).join("")}</select></div><div id="resultForm"></div></div>`}
 function draftResult(id){let r=state.results[id]||{};if(!adminDraft[id])adminDraft[id]={first:(r.first||[]).map(x=>({...x})),second:(r.second||[]).map(x=>({...x})),third:(r.third||[]).map(x=>({...x}))};["first","second","third"].forEach(p=>{if(!adminDraft[id][p].length)adminDraft[id][p]=[{groupId:state.groups[0]?.id||"",studentId:state.students.find(s=>String(s.groupId)===String(state.groups[0]?.id))?.studentId||""}]});return adminDraft[id]}
 function selectedAdminComp(id){let c=state.competitions.find(x=>String(x.id)===String(id)),box=document.getElementById("resultForm");if(!box)return;if(!c){box.innerHTML="";return}let d=draftResult(id),html=`<div class="card" style="margin-top:20px"><p class="muted">Status: ${state.results[id]?.published?"🟢 Announced":"🟡 Not Announced"}</p>`;[["first","🥇 1st Place (20 marks)"],["second","🥈 2nd Place (10 marks)"],["third","🥉 3rd Place (7 marks)"]].forEach(([p,label])=>{html+=`<div class="card" style="margin-top:12px;padding:12px"><b>${label}</b>`;d[p].forEach((x,i)=>{let g=x.groupId||state.groups[0]?.id||"";html+=`<div class="result-entry"><select class="select" onchange="updateResultDraft('${esc(id)}','${p}',${i},'group',this.value)">${state.groups.map(z=>`<option value="${esc(z.id)}" ${String(z.id)===String(g)?"selected":""}>${esc(z.name)}</option>`).join("")}</select><select class="select" onchange="updateResultDraft('${esc(id)}','${p}',${i},'student',this.value)">${state.students.filter(z=>String(z.groupId)===String(g)).map(z=>`<option value="${esc(z.studentId)}" ${String(z.studentId)===String(x.studentId)?"selected":""}>${esc(z.name)} (ID: ${esc(z.studentId)})</option>`).join("")}</select><button class="smallbtn danger" onclick="removeResultStudent('${esc(id)}','${p}',${i})" ${d[p].length===1?"disabled":""}>Remove</button></div>`});html+=`<button class="smallbtn" style="margin-top:10px" onclick="addResultStudent('${esc(id)}','${p}')">+ Add Student</button></div>`});html+=`<div class="actions" style="justify-content:flex-start"><button class="btn gold" onclick="publishResult('${esc(id)}')">${state.results[id]?.published?"Update Result":"Publish Result"}</button>${state.results[id]?.published?`<button class="smallbtn" onclick="revokeResult('${esc(id)}')">Revoke Announcement</button>`:""}</div></div>`;box.innerHTML=html}
 function updateResultDraft(id,p,i,type,value){let d=draftResult(id);if(type==="group"){d[p][i].groupId=value;d[p][i].studentId=state.students.find(s=>String(s.groupId)===String(value))?.studentId||""}else d[p][i].studentId=value;selectedAdminComp(id)}
 function addResultStudent(id,p){let d=draftResult(id),last=d[p][d[p].length-1]||{groupId:state.groups[0]?.id||""},g=last.groupId;d[p].push({groupId:g,studentId:state.students.find(s=>String(s.groupId)===String(g))?.studentId||""});selectedAdminComp(id)}
 function removeResultStudent(id,p,i){let d=draftResult(id);if(d[p].length>1){d[p].splice(i,1);selectedAdminComp(id)}}
-async function publishResult(id){let d=draftResult(id),row={competition_id:id,published:true};["first","second","third"].forEach(p=>row[p]=d[p].filter(x=>x.studentId).map(x=>({groupId:x.groupId,studentId:x.studentId})));const{error}=await supabase.from("results").upsert(row,{onConflict:"competition_id"});if(error){alert(error.message);return}justPublished=id;await loadAll();setTimeout(()=>{justPublished=null;render()},3000)}
-async function revokeResult(id){const{error}=await supabase.from("results").update({published:false}).eq("competition_id",id);if(error)alert(error.message);else loadAll()}
+async function publishResult(id){let d=draftResult(id),row={competition_id:id,published:true};["first","second","third"].forEach(p=>row[p]=d[p].filter(x=>x.studentId).map(x=>({groupId:x.groupId,studentId:x.studentId})));const{error}=await appSupabase.from("results").upsert(row,{onConflict:"competition_id"});if(error){alert(error.message);return}justPublished=id;await loadAll();setTimeout(()=>{justPublished=null;render()},3000)}
+async function revokeResult(id){const{error}=await appSupabase.from("results").update({published:false}).eq("competition_id",id);if(error)alert(error.message);else loadAll()}
 
 function footer(){return `<footer><div class="footerin"><div><strong>🕌 Sirajul Huda Arabic School</strong><div>Milad Fest 2K26 · لوها Waves of Love · Unnalu, Koyyur</div></div><div>© 2026 Sirajul Huda Arabic School, Unnalu, Koyyur.</div></div></footer>`}
 function render(){
