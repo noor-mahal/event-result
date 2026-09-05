@@ -1,5 +1,5 @@
 const EVENT_DATE=new Date(2026,8,5).getTime();
-const PLACE_POINTS={first:20,second:10,third:7};
+const PLACE_POINTS={first:10,second:5,third:3};
 const CATEGORIES=["High Zone","Mid Zone","Zero Zone","Ground Zone"];
 const ICONS={"High Zone":"🔺","Mid Zone":"🟡","Zero Zone":"⚪","Ground Zone":"🟤"};
 const NAV=[["home","🏠","Home"],["competitions","🏆","Competitions"],["results","🥇","Results"],["totalresult","🏅","Total Result"],["gallery","🖼️","Gallery"],["admin","🔐","Admin"]];
