@@ -53,6 +53,7 @@ function subscribeRealtime(){
     .on("postgres_changes",{event:"*",schema:"public",table:"competitions"},refreshFromRealtime)
     .on("postgres_changes",{event:"*",schema:"public",table:"students"},refreshFromRealtime)
     .on("postgres_changes",{event:"*",schema:"public",table:"gallery"},refreshFromRealtime)
+    .on("postgres_changes",{event:"*",schema:"public",table:"site_settings"},refreshFromRealtime)
     .subscribe(status=>console.log("Realtime:",status));
 }
 
@@ -169,11 +170,21 @@ function adminPanel(){
 }
 function dashboard(a){let ts=totals().sort((x,y)=>y.total-x.total);return `<div class="grid grid2" style="margin-top:25px"><div class="grid grid2"><div class="card"><b style="font-size:28px">${state.competitions.length}</b><p class="muted">Competitions</p></div><div class="card"><b style="font-size:28px">${state.students.length}</b><p class="muted">Students</p></div><div class="card"><b style="font-size:28px">${a}</b><p class="muted">Announced</p></div><div class="card"><b style="font-size:28px">${state.competitions.length-a}</b><p class="muted">Pending</p></div></div><div class="card"><h3 class="display">Total Marks</h3>${ts.slice(0,2).map((g,i)=>`<div class="list"><span>${i===0?"🥇":"🥈"} <b>${esc(g.name)}</b></span><b>${g.total}</b></div>`).join("")}</div><div class="card" style="margin-top:20px"><h3 class="display">Public Display Settings</h3><div class="setting-row"><div><b>Total Result</b><div class="muted" style="font-size:12px">Show or hide the overall Total Result page for visitors.</div></div><label class="switch"><input type="checkbox" ${state.totalResultVisible?"checked":""} onchange="toggleTotalResult(this.checked)"><span class="slider"></span></label></div></div></div>`}
 async function toggleTotalResult(visible){
-  state.totalResultVisible=!!visible; render();
-  const {error}=await appSupabase.from("site_settings").upsert({key:"total_result_visible",value:!!visible},{onConflict:"key"});
-  if(error){alert("Could not save setting. Create the site_settings table using the included SQL, then try again.");}
-  else await loadAll();
+  const next=!!visible;
+  state.totalResultVisible=next;
+  render();
+  const {error}=await appSupabase.from("site_settings").upsert({key:"total_result_visible",value:next},{onConflict:"key"});
+  if(error){
+    console.error("Total Result setting save failed:",error);
+    state.totalResultVisible=!next;
+    render();
+    alert("Could not save Total Result setting. Run site-settings.sql in Supabase SQL Editor once, then try again.");
+    return;
+  }
+  state.totalResultVisible=next;
+  render();
 }
+
 function manageCompetitions(){return `<div class="grid grid2" style="margin-top:25px"><div class="card"><h2 class="display">Add Competition</h2><div class="field"><label>Name</label><input id="cn" class="input" placeholder="Competition name"></div><div class="field" style="margin-top:14px"><label>Category</label><select id="cc" class="select">${CATEGORIES.map(c=>`<option>${c}</option>`).join("")}</select></div><button class="btn green" style="margin-top:15px" onclick="addComp()">Add Competition</button></div><div><h2 class="display">All Competitions</h2><ul class="list">${state.competitions.map(c=>`<li><span>${ICONS[c.category]||"🏅"} <b>${esc(c.name)}</b><small class="muted"> · ${esc(c.category)} · ${state.results[c.id]?.published?"🟢 Announced":"🟡 Pending"}</small></span><span><button class="smallbtn" onclick="editComp('${esc(c.id)}')">Edit</button> <button class="smallbtn danger" onclick="deleteComp('${esc(c.id)}')">Delete</button></span></li>`).join("")}</ul></div></div>`}
 async function addComp(){let n=document.getElementById("cn")?.value.trim(),c=document.getElementById("cc")?.value;if(!n)return;const{error}=await appSupabase.from("competitions").insert({id:newId(),name:n,category:c});if(error)alert(error.message);else loadAll()}
 async function editComp(id){let c=state.competitions.find(x=>String(x.id)===String(id));if(!c)return;let n=prompt("Competition name:",c.name);if(n===null)return;let cat=prompt("Category:",c.category);if(!n.trim())return;let patch={name:n.trim()};if(CATEGORIES.includes(cat))patch.category=cat;const{error}=await appSupabase.from("competitions").update(patch).eq("id",id);if(error)alert(error.message);else loadAll()}
@@ -196,7 +207,7 @@ function selectedAdminComp(id){let c=state.competitions.find(x=>String(x.id)===S
 function updateResultDraft(id,p,i,type,value){let d=draftResult(id);if(type==="group"){d[p][i].groupId=value;d[p][i].studentId=isNoneGroup(value)?"":state.students.find(s=>String(s.groupId)===String(value))?.studentId||""}else d[p][i].studentId=value;selectedAdminComp(id)}
 function addResultStudent(id,p){let d=draftResult(id),last=d[p][d[p].length-1]||{groupId:state.groups[0]?.id||"__none__"},g=isNoneGroup(last.groupId)?"__none__":last.groupId;d[p].push({groupId:g,studentId:state.students.find(s=>String(s.groupId)===String(g))?.studentId||""});selectedAdminComp(id)}
 function removeResultStudent(id,p,i){let d=draftResult(id);if(d[p].length>1){d[p].splice(i,1);selectedAdminComp(id)}}
-async function publishResult(id){let d=draftResult(id),row={competition_id:id,published:true};["first","second","third"].forEach(p=>row[p]=d[p].filter(x=>x.studentId).map(x=>({groupId:x.groupId,studentId:x.studentId})));const{error}=await appSupabase.from("results").upsert(row,{onConflict:"competition_id"});if(error){alert(error.message);return}justPublished=id;await loadAll();setTimeout(()=>{justPublished=null;render()},3000)}
+async function publishResult(id){let d=draftResult(id),row={competition_id:id,published:true};["first","second","third"].forEach(p=>row[p]=d[p].map(x=>({groupId:x.groupId,studentId:x.studentId||""})).filter(x=>x.groupId));const{error}=await appSupabase.from("results").upsert(row,{onConflict:"competition_id"});if(error){alert(error.message);return}justPublished=id;await loadAll();setTimeout(()=>{justPublished=null;render()},3000)}
 async function revokeResult(id){const{error}=await appSupabase.from("results").update({published:false}).eq("competition_id",id);if(error)alert(error.message);else loadAll()}
 
 function footer(){return `<footer><div class="footerin"><div><strong>🕌 Sirajul Huda Arabic School</strong><div>Milad Fest 2K26 · لوها Waves of Love · Unnalu, Koyyur</div></div><div>© 2026 Sirajul Huda Arabic School, Unnalu, Koyyur.</div></div></footer>`}
